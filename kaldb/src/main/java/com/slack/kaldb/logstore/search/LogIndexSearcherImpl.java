@@ -116,7 +116,11 @@ public class LogIndexSearcherImpl implements LogIndexSearcher<LogMessage> {
             buildStatsCollector(bucketCount, startTimeMsEpoch, endTimeMsEpoch);
         Collector collectorChain = MultiCollector.wrap(topFieldCollector, statsCollector);
 
+        ScopedSpan searchSpan = Tracing.currentTracer().startScopedSpan("searcher.search");
         searcher.search(query, collectorChain);
+        searchSpan.finish();
+
+        ScopedSpan resultBuilderSpan = Tracing.currentTracer().startScopedSpan("results.add");
         List<LogMessage> results;
         if (howMany > 0) {
           ScoreDoc[] hits = topFieldCollector.topDocs().scoreDocs;
@@ -127,6 +131,7 @@ public class LogIndexSearcherImpl implements LogIndexSearcher<LogMessage> {
         } else {
           results = Collections.emptyList();
         }
+        resultBuilderSpan.finish();
 
         Histogram histogram = statsCollector.histogram;
 

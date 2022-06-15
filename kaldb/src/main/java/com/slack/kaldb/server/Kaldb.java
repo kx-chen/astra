@@ -241,7 +241,7 @@ public class Kaldb {
       ArmeriaService armeriaService =
           new ArmeriaService.Builder(serverPort, "kalDbManager", meterRegistry)
               .withTracingEndpoint(kaldbConfig.getTracingConfig().getZipkinEndpoint())
-              .withGrpcService(new ManagerApiGrpc(serviceMetadataStore))
+              .withGrpcService(new ManagerApiGrpc(serviceMetadataStore, snapshotMetadataStore))
               .build();
       services.add(armeriaService);
 

@@ -182,6 +182,26 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
     }
   }
 
+  protected static List<SnapshotMetadata> fetchSnapshotsWithinTimeframe(
+      List<SnapshotMetadata> snapshotMetadataList, long start, long end) {
+    List<SnapshotMetadata> snapshotsWithinTimeframe = new ArrayList<>();
+    for (SnapshotMetadata s : snapshotMetadataList) {
+      long snapshotStartTime = s.startTimeEpochMs;
+      long snapshotEndTime = s.endTimeEpochMs;
+
+      if (snapshotWithinStartEndTime(start, end, snapshotStartTime, snapshotEndTime)) {
+        snapshotsWithinTimeframe.add(s);
+      }
+    }
+    return snapshotsWithinTimeframe;
+  }
+
+  private static boolean snapshotWithinStartEndTime(
+      long start, long end, long snapshotStartTime, long snapshotEndTime) {
+    return !((snapshotStartTime < start && snapshotEndTime < start)
+            || (snapshotStartTime > end && snapshotEndTime > end));
+  }
+
   /**
    * Returns a new list of service partition metadata, with the provided partition IDs as the
    * current active assignment. This finds the current active assignment (end time of max long),

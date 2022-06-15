@@ -10,6 +10,8 @@ import static org.mockito.Mockito.spy;
 import brave.Tracing;
 import com.slack.kaldb.metadata.service.ServiceMetadata;
 import com.slack.kaldb.metadata.service.ServiceMetadataStore;
+import com.slack.kaldb.metadata.snapshot.SnapshotMetadata;
+import com.slack.kaldb.metadata.snapshot.SnapshotMetadataStore;
 import com.slack.kaldb.metadata.zookeeper.InternalMetadataStoreException;
 import com.slack.kaldb.metadata.zookeeper.MetadataStore;
 import com.slack.kaldb.metadata.zookeeper.ZookeeperMetadataStoreImpl;
@@ -26,6 +28,7 @@ import io.grpc.testing.GrpcCleanupRule;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Instant;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import org.apache.curator.test.TestingServer;
@@ -43,6 +46,7 @@ public class ManagerApiGrpcTest {
 
   private MetadataStore metadataStore;
   private ServiceMetadataStore serviceMetadataStore;
+  private SnapshotMetadataStore snapshotMetadataStore;
   private ManagerApiServiceGrpc.ManagerApiServiceBlockingStub managerApiStub;
 
   @Before
@@ -62,11 +66,12 @@ public class ManagerApiGrpcTest {
 
     metadataStore = ZookeeperMetadataStoreImpl.fromConfig(meterRegistry, zkConfig);
     serviceMetadataStore = spy(new ServiceMetadataStore(metadataStore, true));
+    snapshotMetadataStore = spy(new SnapshotMetadataStore(metadataStore, true));
 
     grpcCleanup.register(
         InProcessServerBuilder.forName(this.getClass().toString())
             .directExecutor()
-            .addService(new ManagerApiGrpc(serviceMetadataStore))
+            .addService(new ManagerApiGrpc(serviceMetadataStore, snapshotMetadataStore))
             .build()
             .start());
     ManagedChannel channel =
@@ -462,5 +467,46 @@ public class ManagerApiGrpcTest {
     assertThat(throwableUpdate.getStatus().getDescription()).contains(serviceName);
 
     assertThat(serviceMetadataStore.listSync().size()).isEqualTo(0);
+  }
+
+  @Test
+  public void shouldFetchSnapshotsWithinTimeframe() {
+    long startTime = Instant.now().toEpochMilli();
+    long start = startTime + 5;
+    long end = startTime + 10;
+    SnapshotMetadata snapshotEndTimeOverlap =
+        new SnapshotMetadata("a", "a", startTime, startTime + 6, 0, "a");
+    SnapshotMetadata snapshotStartTimeOverlap =
+        new SnapshotMetadata("b", "b", startTime + 6, startTime + 13, 0, "b");
+    SnapshotMetadata snapshotFullOverlap =
+        new SnapshotMetadata("c", "c", startTime + 6, startTime + 8, 0, "c");
+    SnapshotMetadata snapshotEdgeOverlap =
+        new SnapshotMetadata("d", "d", startTime + 4, startTime + 5, 0, "d");
+    SnapshotMetadata snapshotEdgeOverlap2 =
+        new SnapshotMetadata("e", "e", startTime + 10, startTime + 12, 0, "e");
+    SnapshotMetadata snapshotNoOverlap =
+        new SnapshotMetadata("f", "f", startTime + 11, startTime + 15, 0, "f");
+    SnapshotMetadata snapshotNoOverlap2 =
+        new SnapshotMetadata("g", "g", startTime, startTime + 4, 0, "g");
+
+    List<SnapshotMetadata> result =
+        ManagerApiGrpc.fetchSnapshotsWithinTimeframe(
+            Arrays.asList(
+                snapshotEndTimeOverlap,
+                snapshotStartTimeOverlap,
+                snapshotFullOverlap,
+                snapshotEdgeOverlap,
+                snapshotEdgeOverlap2,
+                snapshotNoOverlap,
+                snapshotNoOverlap2),
+            start,
+            end);
+
+    assertThat(result.contains(snapshotEndTimeOverlap)).isTrue();
+    assertThat(result.contains(snapshotStartTimeOverlap)).isTrue();
+    assertThat(result.contains(snapshotEdgeOverlap2)).isTrue();
+    assertThat(result.contains(snapshotEdgeOverlap)).isTrue();
+    assertThat(result.contains(snapshotFullOverlap)).isTrue();
+    assertThat(result.size()).isEqualTo(5);
   }
 }

@@ -20,6 +20,8 @@ service ManagerApiService {
   //
   // In the future if only a rate is provided with an empty list the allocation will be automatically assigned.
   rpc UpdatePartitionAssignment(UpdatePartitionAssignmentRequest) returns (UpdatePartitionAssignmentResponse) {}
+
+  rpc RestoreSnapshot(RestoreSnapshotRequest) returns (RestoreSnapshotResponse) {}
 }
 
 // CreateServiceMetadataRequest represents a new service with uninitialized thoughput and partition assignments
@@ -68,3 +70,7 @@ message UpdatePartitionAssignmentResponse {
   // The assigned partition IDs
   repeated string assigned_partition_ids = 1;
 }
+
+message RestoreSnapshotRequest {}
+
+message RestoreSnapshotResponse {}

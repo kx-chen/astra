@@ -8,15 +8,15 @@ import com.slack.kaldb.metadata.service.ServiceMetadata;
 import com.slack.kaldb.metadata.service.ServiceMetadataSerializer;
 import com.slack.kaldb.metadata.service.ServiceMetadataStore;
 import com.slack.kaldb.metadata.service.ServicePartitionMetadata;
+import com.slack.kaldb.metadata.snapshot.SnapshotMetadata;
+import com.slack.kaldb.metadata.snapshot.SnapshotMetadataStore;
 import com.slack.kaldb.proto.manager_api.ManagerApi;
 import com.slack.kaldb.proto.manager_api.ManagerApiServiceGrpc;
 import com.slack.kaldb.proto.metadata.Metadata;
 import io.grpc.Status;
 import io.grpc.stub.StreamObserver;
 import java.time.Instant;
-import java.util.Collections;
-import java.util.List;
-import java.util.Optional;
+import java.util.*;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -30,10 +30,13 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
   private static final Logger LOG = LoggerFactory.getLogger(ManagerApiGrpc.class);
 
   private final ServiceMetadataStore serviceMetadataStore;
+  private final SnapshotMetadataStore snapshotMetadataStore;
   public static final long MAX_TIME = Long.MAX_VALUE;
 
-  public ManagerApiGrpc(ServiceMetadataStore serviceMetadataStore) {
+  public ManagerApiGrpc(
+      ServiceMetadataStore serviceMetadataStore, SnapshotMetadataStore snapshotMetadataStore) {
     this.serviceMetadataStore = serviceMetadataStore;
+    this.snapshotMetadataStore = snapshotMetadataStore;
   }
 
   /** Initializes a new service in the metadata store with no initial allocated capacity */
@@ -162,6 +165,19 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
       responseObserver.onCompleted();
     } catch (Exception e) {
       LOG.error("Error updating partition assignment", e);
+      responseObserver.onError(Status.UNKNOWN.withDescription(e.getMessage()).asException());
+    }
+  }
+
+  @Override
+  public void restoreSnapshot(
+      ManagerApi.RestoreSnapshotRequest request,
+      StreamObserver<ManagerApi.RestoreSnapshotResponse> responseObserver) {
+    try {
+      responseObserver.onNext(ManagerApi.RestoreSnapshotResponse.newBuilder().build());
+      responseObserver.onCompleted();
+    } catch (Exception e) {
+      LOG.error("Error restoring snapshot", e);
       responseObserver.onError(Status.UNKNOWN.withDescription(e.getMessage()).asException());
     }
   }

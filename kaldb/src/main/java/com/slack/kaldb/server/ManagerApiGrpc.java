@@ -1,5 +1,6 @@
 package com.slack.kaldb.server;
 
+import static com.slack.kaldb.chunk.ChunkInfo.containsDataInTimeRange;
 import static com.slack.kaldb.metadata.service.ServiceMetadataSerializer.toServiceMetadataProto;
 
 import com.google.common.base.Preconditions;
@@ -15,9 +16,11 @@ import com.slack.kaldb.proto.manager_api.ManagerApiServiceGrpc;
 import com.slack.kaldb.proto.metadata.Metadata;
 import io.grpc.Status;
 import io.grpc.stub.StreamObserver;
+
 import java.time.Instant;
 import java.util.*;
 import java.util.stream.Collectors;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -182,24 +185,44 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
     }
   }
 
+  protected static List<SnapshotMetadata> fetchSnapshotsWithinTimeframeAndPartition(
+          List<SnapshotMetadata> snapshotMetadataList, long start, long end,
+          String serviceName, List<ServiceMetadata> serviceMetadataList) {
+    List<SnapshotMetadata> snapshotsWithinTimeframe = fetchSnapshotsWithinTimeframe(snapshotMetadataList, start, end);
+    List<String> uniquePartitionIDs = findServicePartitionIDsWithinTimeframe(serviceMetadataList, start, end, serviceName);
+    return snapshotsWithinTimeframe
+            .stream()
+            .filter(snapshotMetadata -> uniquePartitionIDs.contains(snapshotMetadata.partitionId))
+            .collect(Collectors.toList());
+  }
   protected static List<SnapshotMetadata> fetchSnapshotsWithinTimeframe(
       List<SnapshotMetadata> snapshotMetadataList, long start, long end) {
-    List<SnapshotMetadata> snapshotsWithinTimeframe = new ArrayList<>();
-    for (SnapshotMetadata s : snapshotMetadataList) {
-      long snapshotStartTime = s.startTimeEpochMs;
-      long snapshotEndTime = s.endTimeEpochMs;
-
-      if (snapshotWithinStartEndTime(start, end, snapshotStartTime, snapshotEndTime)) {
-        snapshotsWithinTimeframe.add(s);
-      }
-    }
-    return snapshotsWithinTimeframe;
+    return snapshotMetadataList
+            .stream()
+            .filter(snapshot -> containsDataInTimeRange(start, end, snapshot.startTimeEpochMs, snapshot.endTimeEpochMs))
+            .collect(Collectors.toList());
   }
 
-  private static boolean snapshotWithinStartEndTime(
-      long start, long end, long snapshotStartTime, long snapshotEndTime) {
-    return !((snapshotStartTime < start && snapshotEndTime < start)
-            || (snapshotStartTime > end && snapshotEndTime > end));
+  private static List<String> findServicePartitionIDsWithinTimeframe(
+          List<ServiceMetadata> serviceMetadataList,
+          long startTimeEpochMs,
+          long endTimeEpochMs,
+          String indexName) {
+    return serviceMetadataList
+            .stream()
+            .filter(serviceMetadata -> serviceMetadata.name.equals(indexName))
+            .flatMap(
+                    serviceMetadata -> serviceMetadata.partitionConfigs.stream())
+            .filter(
+                    partitionMetadata ->
+                            containsDataInTimeRange(
+                                    partitionMetadata.startTimeEpochMs,
+                                    partitionMetadata.endTimeEpochMs,
+                                    startTimeEpochMs,
+                                    endTimeEpochMs))
+            .flatMap(partitionConfigs -> partitionConfigs.partitions.stream())
+            .distinct()
+            .collect(Collectors.toList());
   }
 
   /**

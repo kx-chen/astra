@@ -10,6 +10,7 @@ import static org.mockito.Mockito.spy;
 import brave.Tracing;
 import com.slack.kaldb.metadata.service.ServiceMetadata;
 import com.slack.kaldb.metadata.service.ServiceMetadataStore;
+import com.slack.kaldb.metadata.service.ServicePartitionMetadata;
 import com.slack.kaldb.metadata.snapshot.SnapshotMetadata;
 import com.slack.kaldb.metadata.snapshot.SnapshotMetadataStore;
 import com.slack.kaldb.metadata.zookeeper.InternalMetadataStoreException;
@@ -508,5 +509,68 @@ public class ManagerApiGrpcTest {
     assertThat(result.contains(snapshotEdgeOverlap)).isTrue();
     assertThat(result.contains(snapshotFullOverlap)).isTrue();
     assertThat(result.size()).isEqualTo(5);
+  }
+
+  @Test
+  public void shouldfetchSnapshotsWithinTimeframeAndPartition() {
+    long startTime = Instant.now().toEpochMilli();
+    long start = startTime + 5;
+    long end = startTime + 10;
+    SnapshotMetadata snapshotEndTimeOverlap =
+            new SnapshotMetadata("a", "a", startTime, startTime + 6, 0, "a");
+    SnapshotMetadata snapshotStartTimeOverlap =
+            new SnapshotMetadata("b", "b", startTime + 6, startTime + 11, 0, "a");
+    SnapshotMetadata snapshotFullOverlap =
+            new SnapshotMetadata("c", "c", startTime + 6, startTime + 11, 0, "b");
+    SnapshotMetadata snapshotEdgeOverlap =
+            new SnapshotMetadata("d", "d", startTime + 4, startTime + 5, 0, "a");
+    SnapshotMetadata snapshotEdgeOverlap2 =
+            new SnapshotMetadata("e", "e", startTime + 4, startTime + 5, 0, "b");
+    SnapshotMetadata snapshotNoOverlap =
+            new SnapshotMetadata("f", "f", startTime + 11, startTime + 15, 0, "a");
+    SnapshotMetadata snapshotNoOverlap2 =
+            new SnapshotMetadata("g", "g", startTime + 11, startTime + 15, 0, "b");
+
+    ServiceMetadata serviceIncluded = new ServiceMetadata("foo", "a", 1,
+            Arrays.asList(
+              new ServicePartitionMetadata(startTime + 5, startTime + 6, Arrays.asList("a"))
+            ));
+    ServiceMetadata serviceNotIncluded = new ServiceMetadata("bar", "b", 1,
+            Arrays.asList(
+                    new ServicePartitionMetadata(startTime + 9, startTime + 12, Arrays.asList("b"))
+            ));
+
+    List<SnapshotMetadata> fooServiceSnapshots =
+            ManagerApiGrpc.fetchSnapshotsWithinTimeframeAndPartition(
+                    Arrays.asList(
+                            snapshotEndTimeOverlap,
+                            snapshotStartTimeOverlap,
+                            snapshotFullOverlap,
+                            snapshotEdgeOverlap,
+                            snapshotEdgeOverlap2,
+                            snapshotNoOverlap,
+                            snapshotNoOverlap2),
+                    start,
+                    end,
+                    "foo",
+                    Arrays.asList(serviceIncluded, serviceNotIncluded));
+
+    List<SnapshotMetadata> barServiceSnapshots =
+            ManagerApiGrpc.fetchSnapshotsWithinTimeframeAndPartition(
+                    Arrays.asList(
+                            snapshotEndTimeOverlap,
+                            snapshotStartTimeOverlap,
+                            snapshotFullOverlap,
+                            snapshotEdgeOverlap,
+                            snapshotEdgeOverlap2,
+                            snapshotNoOverlap,
+                            snapshotNoOverlap2),
+                    start,
+                    end,
+                    "bar",
+                    Arrays.asList(serviceIncluded, serviceNotIncluded));
+
+    assertThat(fooServiceSnapshots.size()).isEqualTo(3);
+    assertThat(barServiceSnapshots.size()).isEqualTo(2);
   }
 }

@@ -23,6 +23,7 @@ service ManagerApiService {
 
   rpc RestoreReplica(RestoreReplicaRequest) returns (RestoreReplicaResponse) {}
   rpc RestoreReplicaIds(RestoreReplicaIdsRequest) returns (RestoreReplicaIdsResponse) {}
+  rpc ListReplicas(ListReplicasRequest) returns (ListReplicasResponse) {}
 }
 
 // CreateDatasetMetadataRequest represents a new dataset with uninitialized thoughput and partition assignments
@@ -79,7 +80,14 @@ message RestoreReplicaRequest {
 }
 
 message RestoreReplicaResponse {
-  string status = 1;
+  int32 queued_count = 1;
+}
+
+message ListReplicasRequest {}
+
+message ListReplicasResponse {
+  repeated string replicas = 1;
+  int32 count = 2;
 }
 
 message RestoreReplicaIdsRequest {

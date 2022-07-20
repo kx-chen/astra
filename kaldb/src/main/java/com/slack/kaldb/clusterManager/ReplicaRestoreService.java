@@ -159,11 +159,7 @@ public class ReplicaRestoreService extends AbstractScheduledService {
       try {
         replicaMetadataStore.createSync(
             replicaMetadataFromSnapshotId(
-                snapshot.snapshotId,
-                Instant.now()
-                    .plus(
-                        managerConfig.getReplicaRestoreServiceConfig().getReplicaLifespanMins(),
-                        ChronoUnit.MINUTES)));
+                snapshot.snapshotId, Instant.now().plus(1, ChronoUnit.MINUTES)));
       } catch (Exception e) {
         LOG.error("Error restoring replica for snapshot {}", snapshot.snapshotId, e);
       }

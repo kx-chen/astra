@@ -11,6 +11,8 @@ import com.slack.kaldb.metadata.dataset.DatasetMetadata;
 import com.slack.kaldb.metadata.dataset.DatasetMetadataSerializer;
 import com.slack.kaldb.metadata.dataset.DatasetMetadataStore;
 import com.slack.kaldb.metadata.dataset.DatasetPartitionMetadata;
+import com.slack.kaldb.metadata.replica.ReplicaMetadata;
+import com.slack.kaldb.metadata.replica.ReplicaMetadataStore;
 import com.slack.kaldb.metadata.snapshot.SnapshotMetadata;
 import com.slack.kaldb.metadata.snapshot.SnapshotMetadataStore;
 import com.slack.kaldb.proto.manager_api.ManagerApi;
@@ -41,6 +43,7 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
   private final SnapshotMetadataStore snapshotMetadataStore;
   public static final long MAX_TIME = Long.MAX_VALUE;
   private final ReplicaRestoreService replicaRestoreService;
+  private final ReplicaMetadataStore replicaMetadataStore;
 
   public ManagerApiGrpc(
       DatasetMetadataStore datasetMetadataStore,
@@ -49,6 +52,18 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
     this.datasetMetadataStore = datasetMetadataStore;
     this.snapshotMetadataStore = snapshotMetadataStore;
     this.replicaRestoreService = replicaRestoreService;
+    this.replicaMetadataStore = null;
+  }
+
+  public ManagerApiGrpc(
+      DatasetMetadataStore datasetMetadataStore,
+      SnapshotMetadataStore snapshotMetadataStore,
+      ReplicaRestoreService replicaRestoreService,
+      ReplicaMetadataStore replicaMetadataStore) {
+    this.datasetMetadataStore = datasetMetadataStore;
+    this.snapshotMetadataStore = snapshotMetadataStore;
+    this.replicaRestoreService = replicaRestoreService;
+    this.replicaMetadataStore = replicaMetadataStore;
   }
 
   /** Initializes a new dataset in the metadata store with no initial allocated capacity */
@@ -182,6 +197,35 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
   }
 
   @Override
+  public void listReplicas(
+      ManagerApi.ListReplicasRequest request,
+      StreamObserver<ManagerApi.ListReplicasResponse> responseObserver) {
+    try {
+      ManagerApi.ListReplicasResponse.Builder listReplicasResponseBuilder =
+          ManagerApi.ListReplicasResponse.newBuilder();
+
+      assert replicaMetadataStore != null;
+      List<ReplicaMetadata> replicas = replicaMetadataStore.listSync();
+      List<String> replicaStrings =
+          replicas.stream().map(ReplicaMetadata::toString).collect(Collectors.toList());
+
+      if (replicas.isEmpty()) {
+        listReplicasResponseBuilder.addReplicas("");
+        listReplicasResponseBuilder.setCount(0);
+      } else {
+        listReplicasResponseBuilder.addAllReplicas(replicaStrings);
+        listReplicasResponseBuilder.setCount(replicas.size());
+      }
+
+      responseObserver.onNext(listReplicasResponseBuilder.build());
+      responseObserver.onCompleted();
+    } catch (Exception e) {
+      LOG.info("Error handling request", e);
+      responseObserver.onError(Status.UNKNOWN.withDescription(e.getMessage()).asException());
+    }
+  }
+
+  @Override
   public void restoreReplica(
       ManagerApi.RestoreReplicaRequest request,
       StreamObserver<ManagerApi.RestoreReplicaResponse> responseObserver) {
@@ -192,18 +236,29 @@ public class ManagerApiGrpc extends ManagerApiServiceGrpc.ManagerApiServiceImplB
       Preconditions.checkArgument(
           !request.getServiceName().isEmpty(), "Service name must not be empty");
 
+      long startTime = 1658280392175L;
+      SnapshotMetadata snapshotIncluded =
+          new SnapshotMetadata("a", "a", startTime + 10, startTime + 15, 0, "a");
+      SnapshotMetadata snapshotIncluded2 =
+          new SnapshotMetadata("b", "b", startTime + 10, startTime + 15, 0, "b");
+      SnapshotMetadata snapshotExcluded =
+          new SnapshotMetadata("c", "c", startTime + 10, startTime + 15, 0, "c");
+
       List<SnapshotMetadata> snapshotsToRestore =
-          calculateRequiredSnapshots(
-              snapshotMetadataStore.getCached(),
-              datasetMetadataStore,
-              request.getStartTimeEpochMs(),
-              request.getEndTimeEpochMs(),
-              request.getServiceName());
+          List.of(snapshotIncluded, snapshotIncluded2, snapshotExcluded);
+      //          calculateRequiredSnapshots(
+      //              snapshotMetadataStore.getCached(),
+      //              datasetMetadataStore,
+      //              request.getStartTimeEpochMs(),
+      //              request.getEndTimeEpochMs(),
+      //              request.getServiceName());
 
       replicaRestoreService.queueSnapshotsForRestoration(snapshotsToRestore);
 
       responseObserver.onNext(
-          ManagerApi.RestoreReplicaResponse.newBuilder().setStatus("success").build());
+          ManagerApi.RestoreReplicaResponse.newBuilder()
+              .setQueuedCount(snapshotsToRestore.size())
+              .build());
       responseObserver.onCompleted();
     } catch (SizeLimitExceededException e) {
       LOG.info(

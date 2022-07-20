@@ -266,7 +266,10 @@ public class Kaldb {
               .withTracing(kaldbConfig.getTracingConfig())
               .withGrpcService(
                   new ManagerApiGrpc(
-                      datasetMetadataStore, snapshotMetadataStore, replicaRestoreService))
+                      datasetMetadataStore,
+                      snapshotMetadataStore,
+                      replicaRestoreService,
+                      replicaMetadataStore))
               .build();
       services.add(armeriaService);
 
